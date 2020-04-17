@@ -2,6 +2,8 @@ package nirmal.ps.client;
 
 import java.util.ArrayList;
 import java.util.List;
+//import java.util.concurrent.ExecutorService;
+//import java.util.concurrent.Executors;
 
 //import nirmal.ps.model.Employee;
 //import nirmal.ps.model.EmployeeDetails;
@@ -58,26 +60,18 @@ public class ThreadManager {
 	
 	public void ProcessFileRead() {
 		try {
-		threadPool = new ArrayList<ThreadWorker>();
-		for(FileDetails processFile: this.responseFilesCollection.getFileDetails()) {
-			processFile.setStatus(ThreadJobStatus.InProgress.toString());
-			
-			threadWorker = new ThreadWorker(processFile.getFileName());
-			threadWorker.start();
-			threadPool.add(threadWorker);
-		}
-		System.out.println(getJobStatus());
-		System.out.println(this.responseFilesCollection.getFileDetails().get(1).getFileName() + ": employee count is " +
-		(this.responseFilesCollection.getFileDetails().get(1).getFileContents()) == null);
-		updateReadFileContents();	
-		Thread.sleep(5000);
-		System.out.println(getJobStatus());
-		Thread.sleep(5000);		
-		if(threadPool.size() == threadPool.stream().filter(p-> !p.isAlive()).count()) {
+			threadPool = new ArrayList<ThreadWorker>();
+			for(FileDetails processFile: this.responseFilesCollection.getFileDetails()) {
+				processFile.setStatus(ThreadJobStatus.InProgress.toString());
+				
+				threadWorker = new ThreadWorker(processFile.getFileName());
+				threadWorker.start();
+				threadPool.add(threadWorker);
+			}
 			System.out.println(getJobStatus());
-		}
-		System.out.println(this.responseFilesCollection.getFileDetails().get(1).getFileName() + ": employee count is " +
-				this.responseFilesCollection.getFileDetails().get(1).getFileContents().size());
+			Thread.sleep(10); //
+			updateReadFileContents();	
+			System.out.println(getJobStatus());
 		}
 		catch(Exception ex) {
 			ex.printStackTrace();
@@ -85,8 +79,7 @@ public class ThreadManager {
 	}
 	
 	private void updateReadFileContents() {
-		while(threadPool.size() != threadPool.stream().filter(p->!p.isAlive()).count()) {
-			
+		while(threadPool.stream().filter(p->!p.isAlive() && p.getName() != "").count() > 0) {
 			var workerObj = threadPool.stream().filter(f->!f.isAlive() && f.getName() != "").findFirst();			
 			if(workerObj.isPresent())
 			{		
