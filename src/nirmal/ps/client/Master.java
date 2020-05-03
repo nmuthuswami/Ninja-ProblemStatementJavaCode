@@ -5,9 +5,11 @@ public class Master {
 	public static void main(String[] args) {
 		
 		ThreadManager tm = new ThreadManager();
-		/*String checkStatus = tm.getJobStatus();
-		System.out.println(checkStatus);*/
+		//thread to read file contents
 		tm.ProcessFileRead();
+		//thread to write file contents
+		tm.ProcessFileWrite();
+	
 	}
 
 }

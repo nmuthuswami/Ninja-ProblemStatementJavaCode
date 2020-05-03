@@ -6,6 +6,7 @@ import java.util.List;
 //import java.util.concurrent.Executors;
 
 //import nirmal.ps.model.Employee;
+//import nirmal.ps.model.Employee;
 //import nirmal.ps.model.EmployeeDetails;
 import nirmal.ps.model.FileDetails;
 import nirmal.ps.model.FilesCollection;
@@ -18,8 +19,9 @@ public class ThreadManager {
 	private StringBuilder responseStatus;
 	private ThreadWorker threadWorker = null;
 	private List<ThreadWorker> threadPool = null;
-		
+	  
 	public ThreadManager() {
+		//api call to get the directory details
 		responseFilesCollection = 
 				(FilesCollection)JavaUtil.convertJSONtoJava("http://localhost:3000/api/getDirDetails", new FilesCollection());	
 		
@@ -33,24 +35,41 @@ public class ThreadManager {
 		
 	}
 	
-	public String getJobStatus(){		
+	//To check each status of each thread (read/write)
+	public String getJobStatus(boolean isRead){		
 		
 		responseStatus = new StringBuilder();
+		responseStatus.append("\n");
+		responseStatus.append("***OVERALL JOB STATUS***");
+		responseStatus.append("\n");
 		//check job status for 'NotYetStarted'
 		getJobWiseCount(ThreadJobStatus.NotYetStarted.toString());
 		
-		//check job status for 'InProgress'
-		getJobWiseCount(ThreadJobStatus.InProgress.toString());
-		
-		//check job status for 'Completed'
-		getJobWiseCount(ThreadJobStatus.Completed.toString());
-		
-		//check job status for 'Error'
-		getJobWiseCount(ThreadJobStatus.Error.toString());		
-		
+		if(isRead == true) {
+			//check job status for 'ReadingInProgress'
+			getJobWiseCount(ThreadJobStatus.ReadingInProgress.toString());
+			
+			//check job status for 'ReadingCompleted'
+			getJobWiseCount(ThreadJobStatus.ReadingCompleted.toString());
+			
+			//check job status for 'ReadError'
+			getJobWiseCount(ThreadJobStatus.ReadError.toString());		
+		}
+		else {
+			//check job status for 'WritingInProgress'
+			getJobWiseCount(ThreadJobStatus.WritingInProgress.toString());
+			
+			//check job status for 'WritingCompleted'
+			getJobWiseCount(ThreadJobStatus.WritingCompleted.toString());
+			
+			//check job status for 'WriteError'
+			getJobWiseCount(ThreadJobStatus.WriteError.toString());	
+		}
+		responseStatus.append("\n");
 		return responseStatus.toString();
 	}
 	
+	//Get job-wise count based on the status
 	private void getJobWiseCount(String requestStatus) {
 		statusCount =  
 				(int) responseFilesCollection.getFileDetails().stream().filter(p->p.getStatus().equals(requestStatus)).count();
@@ -58,39 +77,72 @@ public class ThreadManager {
 		responseStatus.append("\n");
 	}
 	
+	//Read file content and store the details into employee collection.
 	public void ProcessFileRead() {
 		try {
 			threadPool = new ArrayList<ThreadWorker>();
 			for(FileDetails processFile: this.responseFilesCollection.getFileDetails()) {
-				processFile.setStatus(ThreadJobStatus.InProgress.toString());
+				processFile.setStatus(ThreadJobStatus.ReadingInProgress.toString());
 				
-				threadWorker = new ThreadWorker(processFile.getFileName());
+				threadWorker = new ThreadWorker(processFile.getFileName(), true, null);				
 				threadWorker.start();
 				threadPool.add(threadWorker);
 			}
-			System.out.println(getJobStatus());
-			Thread.sleep(10); //
-			updateReadFileContents();	
-			System.out.println(getJobStatus());
+			System.out.println(getJobStatus(true));
+			updateReadFileContents(true);	
 		}
 		catch(Exception ex) {
 			ex.printStackTrace();
 		}
 	}
 	
-	private void updateReadFileContents() {
-		while(threadPool.stream().filter(p->!p.isAlive() && p.getName() != "").count() > 0) {
-			var workerObj = threadPool.stream().filter(f->!f.isAlive() && f.getName() != "").findFirst();			
-			if(workerObj.isPresent())
-			{		
-				threadWorker = workerObj.get();
-				this.responseFilesCollection.updateFileEmployeeDetails(threadWorker.getName(), 
-						threadWorker.getEmployeeDetails(), ThreadJobStatus.Completed.toString());
-				threadWorker.setName("");
+	//write employee collection into redis db.
+	public void ProcessFileWrite() {
+		try {
+			threadPool = new ArrayList<ThreadWorker>();
+			for(FileDetails processFile: this.responseFilesCollection.getFileDetails()) {
+				processFile.setStatus(ThreadJobStatus.WritingInProgress.toString());
+				threadWorker = new ThreadWorker(processFile.getFileName(), false, processFile.getFileContents());
+				threadWorker.start();
+				threadPool.add(threadWorker);
 			}
+			System.out.println(getJobStatus(false));
+			updateReadFileContents(false);	
 		}
-		System.out.println("**Over All Process Completed**");
+		catch(Exception ex) {
+			ex.printStackTrace();
+		}
 	}
+	
+	private void updateReadFileContents(boolean isRead) throws InterruptedException {
+		//System.out.println("Test Read: " + threadPool.stream().filter(p->!p.isAlive() && p.getName() == "").count());	
+		if(threadPool.stream().filter(p->!p.isAlive() && p.getName() == "").count() == actualFileCount) {
+			System.out.println(getJobStatus(isRead));
+			System.out.println("**Over All " + ((isRead)? "Read" : "Write") + " Process Completed**");
+		}
+		else {
+			//System.out.println("Test Read: " + threadPool.stream().filter(p->!p.isAlive() && p.getName() != "").count());
+			while(threadPool.stream().filter(p->!p.isAlive() && p.getName() != "").count() > 0) {
+				var workerObj = threadPool.stream().filter(f->!f.isAlive() && f.getName() != "").findFirst();			
+				if(workerObj.isPresent())
+				{					
+					threadWorker = workerObj.get();
+					if(isRead == true) {
+						this.responseFilesCollection.updateFileEmployeeDetails(threadWorker.getName(), 
+								threadWorker.getEmployeeDetails(), 
+								ThreadJobStatus.ReadingCompleted.toString());
+					}
+					else {
+						this.responseFilesCollection.updateFileDetailsStatusOnly(threadWorker.getName(), ThreadJobStatus.WritingCompleted.toString());
+					}
+					threadWorker.setName("");				
+				}
+			}
+			Thread.sleep(10);
+			updateReadFileContents(isRead);//recursive
+		}
+	}
+		
 
 	public List<FileDetails> getJobDetails() {
 		return responseFilesCollection.getFileDetails();
@@ -104,9 +156,12 @@ public class ThreadManager {
 	
 	public enum ThreadJobStatus{
 		NotYetStarted,
-		InProgress,
-		Completed,
-		Error
+		ReadingInProgress,
+		ReadingCompleted,
+		WritingInProgress,
+		WritingCompleted,
+		ReadError,
+		WriteError
 	}
 }
 

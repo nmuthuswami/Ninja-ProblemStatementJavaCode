@@ -19,4 +19,11 @@ public class FilesCollection {
 		fileDetails.setStatus(requestStatus);
 		System.out.println(fileDetails.getFileName() + ", employee details updated successfully.");
 	}
+	
+	public void updateFileDetailsStatusOnly(String requestFileName, String requestStatus) {
+		System.out.println("Test: " + requestFileName);
+		FileDetails fileDetails = this.fileDetails.stream().filter(f->f.getFileName() == requestFileName).findFirst().get();
+		fileDetails.setStatus(requestStatus);
+		System.out.println(fileDetails.getFileName() + ", employee details updated successfully.");
+	}
 }
